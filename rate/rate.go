@@ -10,6 +10,8 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"github.com/andres-erbsen/clock"
 )
 
 // Limit defines the maximum frequency of some events.
@@ -52,6 +54,7 @@ func Every(interval time.Duration) Limit {
 //
 // The methods AllowN, ReserveN, and WaitN consume n tokens.
 type Limiter struct {
+	clock clock.Clock
 	limit Limit
 	burst int
 
@@ -61,6 +64,19 @@ type Limiter struct {
 	last time.Time
 	// lastEvent is the latest time of a rate-limited event (past or future)
 	lastEvent time.Time
+}
+
+// NewLimiter returns a new Limiter that allows events up to rate r and permits
+// bursts of at most b tokens.
+func NewLimiter(c clock.Clock, r Limit, b int) *Limiter {
+	if c == nil {
+		c = clock.New()
+	}
+	return &Limiter{
+		clock: c,
+		limit: r,
+		burst: b,
+	}
 }
 
 // Limit returns the maximum overall event rate.
@@ -78,18 +94,9 @@ func (lim *Limiter) Burst() int {
 	return lim.burst
 }
 
-// NewLimiter returns a new Limiter that allows events up to rate r and permits
-// bursts of at most b tokens.
-func NewLimiter(r Limit, b int) *Limiter {
-	return &Limiter{
-		limit: r,
-		burst: b,
-	}
-}
-
 // Allow is shorthand for AllowN(time.Now(), 1).
 func (lim *Limiter) Allow() bool {
-	return lim.AllowN(time.Now(), 1)
+	return lim.AllowN(lim.clock.Now(), 1)
 }
 
 // AllowN reports whether n events may happen at time now.
@@ -119,7 +126,7 @@ func (r *Reservation) OK() bool {
 
 // Delay is shorthand for DelayFrom(time.Now()).
 func (r *Reservation) Delay() time.Duration {
-	return r.DelayFrom(time.Now())
+	return r.DelayFrom(r.lim.clock.Now())
 }
 
 // InfDuration is the duration returned by Delay when a Reservation is not OK.
@@ -142,7 +149,7 @@ func (r *Reservation) DelayFrom(now time.Time) time.Duration {
 
 // Cancel is shorthand for CancelAt(time.Now()).
 func (r *Reservation) Cancel() {
-	r.CancelAt(time.Now())
+	r.CancelAt(r.lim.clock.Now())
 	return
 }
 
@@ -190,7 +197,7 @@ func (r *Reservation) CancelAt(now time.Time) {
 
 // Reserve is shorthand for ReserveN(time.Now(), 1).
 func (lim *Limiter) Reserve() Reservation {
-	return lim.ReserveN(time.Now(), 1)
+	return lim.ReserveN(lim.clock.Now(), 1)
 }
 
 // ReserveN returns a Reservation that indicates how long the caller must wait before n events happen.
@@ -242,7 +249,7 @@ func (lim *Limiter) waitN(ctx contextContext, n int) (err error) {
 	default:
 	}
 	// Determine wait limit
-	now := time.Now()
+	now := lim.clock.Now()
 	waitLimit := InfDuration
 	if deadline, ok := ctx.Deadline(); ok {
 		waitLimit = deadline.Sub(now)
@@ -257,7 +264,7 @@ func (lim *Limiter) waitN(ctx contextContext, n int) (err error) {
 	if delay == 0 {
 		return nil
 	}
-	t := time.NewTimer(delay)
+	t := lim.clock.Timer(delay)
 	defer t.Stop()
 	select {
 	case <-t.C:
@@ -273,7 +280,7 @@ func (lim *Limiter) waitN(ctx contextContext, n int) (err error) {
 
 // SetLimit is shorthand for SetLimitAt(time.Now(), newLimit).
 func (lim *Limiter) SetLimit(newLimit Limit) {
-	lim.SetLimitAt(time.Now(), newLimit)
+	lim.SetLimitAt(lim.clock.Now(), newLimit)
 }
 
 // SetLimitAt sets a new Limit for the limiter. The new Limit, and Burst, may be violated

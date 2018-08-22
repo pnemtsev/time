@@ -1,4 +1,5 @@
 # Go Time
+![Project status](http://img.shields.io/status/experimental.png?color=red)
 
 This repository provides supplementary Go time packages.
 
