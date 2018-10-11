@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/andres-erbsen/clock"
+	"github.com/LopatkinEvgeniy/clock"
 )
 
 // Limit defines the maximum frequency of some events.
@@ -70,7 +70,7 @@ type Limiter struct {
 // bursts of at most b tokens.
 func NewLimiter(c clock.Clock, r Limit, b int) *Limiter {
 	if c == nil {
-		c = clock.New()
+		c = clock.NewRealClock()
 	}
 	return &Limiter{
 		clock: c,
@@ -264,10 +264,10 @@ func (lim *Limiter) waitN(ctx contextContext, n int) (err error) {
 	if delay == 0 {
 		return nil
 	}
-	t := lim.clock.Timer(delay)
+	t := lim.clock.NewTimer(delay)
 	defer t.Stop()
 	select {
-	case <-t.C:
+	case <-t.Chan():
 		// We can proceed.
 		return nil
 	case <-ctx.Done():
